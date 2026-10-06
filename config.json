@@ -1,0 +1,93 @@
+{
+    "scenario_name": "Normal Office Worker Behavior Simulation",
+    "description": "Simulates daily office tasks: drafting emails, reviewing documents, cell data entry, window navigation, and taking breaks.",
+    "key_press_speed": 0.025,
+    "interval": 0.035,
+    "human_jitter": true,
+    "repeat_count": 0,
+    "repeat_interval": 200.0,
+    "scenario": [
+        {
+            "action": "log",
+            "message": "Step 1: Focus workspace and switch window (Alt+Tab)"
+        },
+        {
+            "action": "move_mouse",
+            "x": 600,
+            "y": 400,
+            "smooth": true,
+            "duration": 0.4
+        },
+        {
+            "action": "sleep",
+            "duration": 1.0
+        },
+        {
+            "action": "log",
+            "message": "Step 2: Composing morning status email response"
+        },
+        {
+            "action": "send_keys",
+            "contents": "Subject: Weekly Operational Summary & Action Items{ENTER}{ENTER}Hi Team,{ENTER}{ENTER}Here is the status report for today's active tasks:{ENTER}- Finalized quarterly budget spreadsheet.{ENTER}- Conducted client feedback sync.{ENTER}- Verified deployment metrics.{ENTER}{ENTER}Please let me know if any further details are required.{ENTER}{ENTER}Best regards,{ENTER}Alex - Operations{ENTER}"
+        },
+        {
+            "action": "sleep",
+            "duration": 2.0
+        },
+        {
+            "action": "log",
+            "message": "Step 3: Navigating and entering numbers into spreadsheet cells"
+        },
+        {
+            "action": "move_mouse",
+            "x": 750,
+            "y": 350,
+            "smooth": true,
+            "duration": 0.3
+        },
+        {
+            "action": "send_keys",
+            "contents": "2026-10-06{TAB}Q4-Deliverables{TAB}12500.00{TAB}Approved{ENTER}"
+        },
+        {
+            "action": "sleep",
+            "duration": 1.5
+        },
+        {
+            "action": "log",
+            "message": "Step 4: Reviewing report document, scrolling down and reading"
+        },
+        {
+            "action": "send_keys",
+            "contents": "{PAGEDOWN}{SLEEP:1.5}{PAGEDOWN}{SLEEP:2.0}{PAGEUP}{SLEEP:1.0}"
+        },
+        {
+            "action": "scroll",
+            "amount": -3
+        },
+        {
+            "action": "sleep",
+            "duration": 1.0
+        },
+        {
+            "action": "log",
+            "message": "Step 5: Sending quick team chat confirmation"
+        },
+        {
+            "action": "send_keys",
+            "contents": "Got it! Thanks for the update, will check it now.{ENTER}"
+        },
+        {
+            "action": "sleep",
+            "duration": 1.5
+        },
+        {
+            "action": "log",
+            "message": "Step 6: Saving work (Ctrl+S) and taking a short break"
+        },
+        {
+            "action": "sleep",
+            "duration": 3.0
+        }
+    ]
+}
