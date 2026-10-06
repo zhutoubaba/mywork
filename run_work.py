@@ -1,28 +1,41 @@
 """
 Virtual Key Sender & Mouse Movement Automation Script
 ------------------------------------------------------
-Requirements Met:
-1. Key press speed, send contents, and interval are fully configurable.
-2. Uses ONLY standard Python packages (ctypes, time, json, tkinter, threading, random). Zero external dependencies.
-3. Removes argparse; all arguments and scenarios are loaded directly from config.json.
-4. Includes full office worker behavior simulation engine and scenario runner.
-
-Usage:
-  - CLI: python run_work.py (loads config.json directly)
-  - Custom Config: python run_work.py custom_config.json
-  - GUI Mode: python run_work.py --gui (or set "gui": true in config.json)
-  - Module import: from run_work import AutoInput
+Core automation engine for virtual typing, hotkeys, mouse movements,
+and scenario execution based on JSON configuration.
 """
 
 import sys
 import os
 import time
+from datetime import datetime
 import json
 import math
 import ctypes
 from ctypes import wintypes
-import threading
 import random
+
+
+def log_msg(msg, end="\n", flush=False):
+    """Log message prepended with current timestamp [YYYY-MM-DD HH:MM:SS]."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg_str = str(msg)
+
+    is_cr = False
+    if msg_str.startswith("\r"):
+        is_cr = True
+        msg_str = msg_str[1:]
+
+    leading_newlines = ""
+    while msg_str.startswith("\n"):
+        leading_newlines += "\n"
+        msg_str = msg_str[1:]
+
+    prefix = "\r" if is_cr else leading_newlines
+    padding = "   " if is_cr else ""
+    print(f"{prefix}[{timestamp}] {msg_str}{padding}", end=end, flush=flush)
+
+
 
 # ---------------------------------------------------------------------------
 # Windows API Data Types & Input Structs via ctypes (Zero dependencies)
@@ -107,7 +120,7 @@ VK_MAP = {
 
 
 class AutoInput:
-    """Core automation engine for virtual key typing, mouse movement, and office worker scenario execution."""
+    """Core automation engine for virtual key typing, mouse movement, and scenario execution."""
 
     def __init__(self, key_press_speed=0.025, interval=0.035, human_jitter=False):
         """
@@ -216,14 +229,12 @@ class AutoInput:
         if not vk_codes:
             return
 
-        # Press all keys down in order
         for vk in vk_codes:
             self.press_vk(vk, down=True)
             time.sleep(0.01)
 
         time.sleep(speed)
 
-        # Release all keys in reverse order
         for vk in reversed(vk_codes):
             self.press_vk(vk, down=False)
             time.sleep(0.01)
@@ -255,12 +266,7 @@ class AutoInput:
         self._send(inp_up)
 
     def send_contents(self, contents, key_press_speed=None, interval=None):
-        """
-        Send text/contents with token parsing (e.g. {ENTER}, {TAB}, {SLEEP:1.5}, {CLICK}, {MOVE:X,Y}).
-        :param contents: String to send or list of character/token strings.
-        :param key_press_speed: Override key press duration.
-        :param interval: Override inter-character delay.
-        """
+        """Send text/contents with token parsing (e.g. {ENTER}, {TAB}, {SLEEP:1.5}, {CLICK}, {MOVE:X,Y})."""
         k_speed = self.key_press_speed if key_press_speed is None else float(key_press_speed)
         k_interval = self.interval if interval is None else float(interval)
 
@@ -270,7 +276,6 @@ class AutoInput:
         i = 0
         n = len(contents)
         while i < n and not self.stop_requested:
-            # Check for special tokens like {ENTER}, {SLEEP:1.0}, {MOVE:500,400}, {CTRL+S}
             if contents[i] == '{':
                 end = contents.find('}', i)
                 if end != -1:
@@ -333,7 +338,7 @@ class AutoInput:
 
         if action == "log":
             msg = step.get("message", step.get("text", ""))
-            print(f"[Office Worker] {msg}")
+            log_msg(f"[Office Worker] {msg}")
 
         elif action in ("send_keys", "type", "input"):
             contents = step.get("contents", step.get("text", ""))
@@ -367,10 +372,7 @@ class AutoInput:
                 self.send_hotkey(combo, press_speed=base_speed)
 
     def execute_workflow(self, config):
-        """
-        Run a full automation workflow or scenario sequence from a configuration dictionary.
-        Supports both structured scenario steps ('scenario' list) and legacy single workflow parameters.
-        """
+        """Run automation workflow or scenario sequence from config dictionary."""
         self.stop_requested = False
         k_speed = float(config.get("key_press_speed", self.key_press_speed))
         k_interval = float(config.get("interval", self.interval))
@@ -380,6 +382,13 @@ class AutoInput:
         repeat_count = int(config.get("repeat_count", 1))
         repeat_interval = float(config.get("repeat_interval", 1.0))
 
+        log_msg("[Workflow] Loaded Arguments / Configuration:")
+        for k, v in config.items():
+            if k == "scenario" and isinstance(v, list):
+                log_msg(f"  - {k}: [{len(v)} steps defined]")
+            else:
+                log_msg(f"  - {k}: {v}")
+
         current_run = 0
         while not self.stop_requested:
             current_run += 1
@@ -387,13 +396,12 @@ class AutoInput:
             if scenario and isinstance(scenario, list):
                 scenario_name = config.get("scenario_name", "Office Worker Scenario")
                 run_label = f"Run {current_run}/{repeat_count}" if repeat_count > 0 else f"Run {current_run} (Infinite)"
-                print(f"\n--- Running Scenario: '{scenario_name}' ({run_label}) ---")
+                log_msg(f"\n--- Running Scenario: '{scenario_name}' ({run_label}) ---")
                 for step in scenario:
                     if self.stop_requested:
                         break
                     self.execute_scenario_step(step, k_speed, k_interval)
             else:
-                # 1. Mouse movement (if specified)
                 mx = config.get("mouse_x")
                 my = config.get("mouse_y")
                 if mx is not None and my is not None:
@@ -406,7 +414,6 @@ class AutoInput:
                         btn_type = "left" if click_btn is True else str(click_btn)
                         self.click_mouse(btn_type)
 
-                # 2. Key/Text Sending
                 contents = config.get("send_contents", "")
                 if contents:
                     self.send_contents(contents, key_press_speed=k_speed, interval=k_interval)
@@ -415,259 +422,49 @@ class AutoInput:
                 break
 
             if not self.stop_requested:
-                time.sleep(repeat_interval)
+                rem = repeat_interval
+                while rem > 0 and not self.stop_requested:
+                    display_sec = int(math.ceil(rem)) if rem >= 1 else round(rem, 1)
+                    log_msg(f"\r[Office Worker] Waiting for next run... {display_sec}s remaining", end="", flush=True)
+                    sleep_time = min(1.0, rem)
+                    time.sleep(sleep_time)
+                    rem -= sleep_time
+                print()
+
 
 
 # ---------------------------------------------------------------------------
 # Config File Manager (JSON)
 # ---------------------------------------------------------------------------
-DEFAULT_CONFIG = {
-    "scenario_name": "Normal Office Worker Behavior Simulation",
-    "key_press_speed": 0.025,
-    "interval": 0.035,
-    "human_jitter": True,
-    "repeat_count": 0,
-    "repeat_interval": 2.0,
-    "send_contents": "Hello World! {ENTER}Automation test successful.{ENTER}",
-    "mouse_x": None,
-    "mouse_y": None,
-    "mouse_smooth": True,
-    "mouse_speed": 0.3,
-    "click_at_target": False
-}
-
-def get_config_path(filepath="config.json"):
-    if not os.path.isabs(filepath):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(script_dir, filepath)
-    return filepath
-
 def load_config(filepath="config.json"):
-    full_path = get_config_path(filepath)
-    if os.path.exists(full_path):
-        with open(full_path, 'r', encoding='utf-8') as f:
-            cfg = json.load(f)
-            full_cfg = DEFAULT_CONFIG.copy()
-            full_cfg.update(cfg)
-            return full_cfg
-    return DEFAULT_CONFIG.copy()
-
-def save_config(filepath, config_dict):
-    full_path = get_config_path(filepath)
-    with open(full_path, 'w', encoding='utf-8') as f:
-        json.dump(config_dict, f, indent=4)
-
+    """Load JSON configuration file."""
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filepath)
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
 
 
 # ---------------------------------------------------------------------------
-# Simple Graphical User Interface (Tkinter - Standard Library)
-# ---------------------------------------------------------------------------
-def launch_gui(config_path="config.json"):
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-
-    cfg = load_config(config_path)
-
-    root = tk.Tk()
-    root.title("Virtual Key & Mouse Automation")
-    root.geometry("520x640")
-    root.resizable(False, False)
-
-    # Style
-    style = ttk.Style()
-    style.theme_use("clam")
-
-    # Engine instance
-    engine = AutoInput()
-    worker_thread = None
-
-    # Title
-    header = ttk.Label(root, text="Virtual Key & Mouse Automation", font=("Segoe UI", 14, "bold"))
-    header.pack(pady=10)
-
-    frame = ttk.Frame(root, padding=15)
-    frame.pack(fill="both", expand=True)
-
-    # 1. Send Contents
-    ttk.Label(frame, text="Send Contents (supports {ENTER}, {TAB}, {SLEEP:1.0}, {ALT+TAB}, {CTRL+S}):", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
-    text_area = tk.Text(frame, height=5, width=55, font=("Consolas", 10))
-    text_area.grid(row=1, column=0, columnspan=2, pady=(0, 10))
-    text_area.insert("1.0", cfg.get("send_contents", ""))
-
-    # 2. Key Press Speed
-    ttk.Label(frame, text="Key Press Speed (seconds hold down):").grid(row=2, column=0, sticky="w", pady=5)
-    entry_speed = ttk.Entry(frame, width=15)
-    entry_speed.grid(row=2, column=1, sticky="e", pady=5)
-    entry_speed.insert(0, str(cfg.get("key_press_speed", 0.025)))
-
-    # 3. Interval
-    ttk.Label(frame, text="Interval between Keys/Actions (seconds):").grid(row=3, column=0, sticky="w", pady=5)
-    entry_interval = ttk.Entry(frame, width=15)
-    entry_interval.grid(row=3, column=1, sticky="e", pady=5)
-    entry_interval.insert(0, str(cfg.get("interval", 0.035)))
-
-    # 4. Mouse Coordinates
-    ttk.Label(frame, text="Mouse Target (X, Y) [Optional]:").grid(row=4, column=0, sticky="w", pady=5)
-    mouse_frame = ttk.Frame(frame)
-    mouse_frame.grid(row=4, column=1, sticky="e", pady=5)
-
-    entry_mx = ttk.Entry(mouse_frame, width=6)
-    entry_mx.pack(side="left", padx=2)
-    if cfg.get("mouse_x") is not None:
-        entry_mx.insert(0, str(cfg["mouse_x"]))
-
-    entry_my = ttk.Entry(mouse_frame, width=6)
-    entry_my.pack(side="left", padx=2)
-    if cfg.get("mouse_y") is not None:
-        entry_my.insert(0, str(cfg["mouse_y"]))
-
-    def pick_coords():
-        def update_pos():
-            x, y = engine.get_mouse_pos()
-            lbl_pos.config(text=f"Mouse Pos: ({x}, {y}) - Press ESC to lock")
-            if not top.done:
-                top.after(50, update_pos)
-
-        top = tk.Toplevel(root)
-        top.title("Coordinate Picker")
-        top.geometry("300x100")
-        top.done = False
-        lbl_pos = ttk.Label(top, text="Hover over target location...", font=("Segoe UI", 11))
-        lbl_pos.pack(expand=True)
-
-        def on_esc(event):
-            top.done = True
-            x, y = engine.get_mouse_pos()
-            entry_mx.delete(0, tk.END)
-            entry_mx.insert(0, str(x))
-            entry_my.delete(0, tk.END)
-            entry_my.insert(0, str(y))
-            top.destroy()
-
-        top.bind("<Escape>", on_esc)
-        top.after(50, update_pos)
-
-    btn_pick = ttk.Button(frame, text="Pick Position", command=pick_coords)
-    btn_pick.grid(row=5, column=1, sticky="e", pady=(0, 5))
-
-    # 5. Options
-    var_smooth = tk.BooleanVar(value=cfg.get("mouse_smooth", True))
-    chk_smooth = ttk.Checkbutton(frame, text="Smooth Mouse Glide", variable=var_smooth)
-    chk_smooth.grid(row=5, column=0, sticky="w", pady=5)
-
-    var_click = tk.BooleanVar(value=bool(cfg.get("click_at_target")))
-    chk_click = ttk.Checkbutton(frame, text="Click at Target Mouse Position", variable=var_click)
-    chk_click.grid(row=6, column=0, sticky="w", pady=5)
-
-    # 6. Repeat Loop
-    ttk.Label(frame, text="Repeat Count (1 = once, 0 = infinite):").grid(row=7, column=0, sticky="w", pady=5)
-    entry_repeat = ttk.Entry(frame, width=15)
-    entry_repeat.grid(row=7, column=1, sticky="e", pady=5)
-    entry_repeat.insert(0, str(cfg.get("repeat_count", 1)))
-
-    ttk.Label(frame, text="Repeat Delay (seconds):").grid(row=8, column=0, sticky="w", pady=5)
-    entry_rep_delay = ttk.Entry(frame, width=15)
-    entry_rep_delay.grid(row=8, column=1, sticky="e", pady=5)
-    entry_rep_delay.insert(0, str(cfg.get("repeat_interval", 2.0)))
-
-    # Status & Control Buttons
-    lbl_status = ttk.Label(root, text="Status: Ready", font=("Segoe UI", 10, "italic"), foreground="gray")
-    lbl_status.pack(pady=5)
-
-    def get_ui_config():
-        contents = text_area.get("1.0", tk.END).rstrip("\n")
-        try:
-            speed = float(entry_speed.get())
-            interval = float(entry_interval.get())
-            repeat = int(entry_repeat.get())
-            rep_delay = float(entry_rep_delay.get())
-        except ValueError:
-            messagebox.showerror("Error", "Numeric values required for speeds/intervals.")
-            return None
-
-        mx_str = entry_mx.get().strip()
-        my_str = entry_my.get().strip()
-        mx = int(mx_str) if mx_str else None
-        my = int(my_str) if my_str else None
-
-        updated_cfg = cfg.copy()
-        updated_cfg.update({
-            "send_contents": contents,
-            "key_press_speed": speed,
-            "interval": interval,
-            "mouse_x": mx,
-            "mouse_y": my,
-            "mouse_smooth": var_smooth.get(),
-            "mouse_speed": 0.3,
-            "click_at_target": var_click.get(),
-            "repeat_count": repeat,
-            "repeat_interval": rep_delay
-        })
-        return updated_cfg
-
-    def start_automation():
-        nonlocal worker_thread
-        current_cfg = get_ui_config()
-        if not current_cfg:
-            return
-
-        save_config(config_path, current_cfg)
-        btn_start.config(state="disabled")
-        btn_stop.config(state="normal")
-        lbl_status.config(text="Status: Running (Countdown 3s)...", foreground="blue")
-
-        def run_thread():
-            time.sleep(3.0)  # Countdown focus delay
-            lbl_status.config(text="Status: Executing Automation...", foreground="green")
-            engine.execute_workflow(current_cfg)
-            lbl_status.config(text="Status: Completed", foreground="gray")
-            btn_start.config(state="normal")
-            btn_stop.config(state="disabled")
-
-        worker_thread = threading.Thread(target=run_thread, daemon=True)
-        worker_thread.start()
-
-    def stop_automation():
-        engine.stop_requested = True
-        lbl_status.config(text="Status: Stopping...", foreground="red")
-        btn_start.config(state="normal")
-        btn_stop.config(state="disabled")
-
-    btn_frame = ttk.Frame(root)
-    btn_frame.pack(pady=10)
-
-    btn_start = ttk.Button(btn_frame, text="▶ Start Automation (3s delay)", command=start_automation, width=28)
-    btn_start.pack(side="left", padx=5)
-
-    btn_stop = ttk.Button(btn_frame, text="⏹ Stop", command=stop_automation, state="disabled", width=15)
-    btn_stop.pack(side="left", padx=5)
-
-    root.mainloop()
-
-
-# ---------------------------------------------------------------------------
-# CLI Entrypoint (Argparse removed - configuration loaded from JSON)
+# CLI Entrypoint
 # ---------------------------------------------------------------------------
 def main():
-    # Path to config file (default: config.json in current directory or specified as 1st arg)
-    config_path = "config.json"
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-        config_path = sys.argv[1]
+    log_msg(f"[Init] CLI Arguments: {sys.argv}")
+    config_path = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "config.json"
 
-    # Load configuration strictly from config.json (or specified config file)
-    print(f"Loading configuration from '{config_path}'...")
+    log_msg(f"[Init] Loading configuration from '{config_path}'...")
     cfg = load_config(config_path)
-
-    # Check if GUI launch is requested in config or via --gui flag
-    if cfg.get("gui", False) or "--gui" in sys.argv:
-        launch_gui(config_path)
-        return
 
     scenario_name = cfg.get("scenario_name", "Office Worker Automation")
     sec_init = 5
-    print(f"Starting Virtual Key & Mouse Automation ({scenario_name}) in {sec_init} seconds...")
-    print("Looping scenario infinitely. Press Ctrl+C to stop.")
-    time.sleep(sec_init)
+    log_msg(f"\n[Init] Starting Virtual Key & Mouse Automation ({scenario_name})")
+    log_msg("Press Ctrl+C at any time to stop.")
+    for i in range(sec_init, 0, -1):
+        log_msg(f"\r[Init] Starting in {i}s...", end="", flush=True)
+        time.sleep(1)
+    print()
+
 
     engine = AutoInput(
         key_press_speed=cfg.get("key_press_speed", 0.025),
@@ -676,9 +473,9 @@ def main():
     )
     try:
         engine.execute_workflow(cfg)
-        print("Automation finished successfully.")
+        log_msg("Automation finished successfully.")
     except KeyboardInterrupt:
-        print("\n[!] Automation stopped by user (Ctrl+C). Exiting.")
+        log_msg("\n[!] Automation stopped by user (Ctrl+C). Exiting.")
 
 
 if __name__ == "__main__":
